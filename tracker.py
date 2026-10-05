@@ -27,7 +27,7 @@ if not os.path.exists("MODEL_PATH"):
 
 BaseOptions = python.BaseOptions
 FaceLandmarker = vision.FaceLandmarker
-FaceLandmarkerOptions = vision.FaceLandmarkerOptions
+FaceLandmarkerOptions = vision.FaceLandmarkerOptions    
 RunningMode = vision.RunningMode
 
 
@@ -63,8 +63,6 @@ with FaceLandmarker.create_from_options(options) as landmarker:
 
     start_time = time.monotonic()
 
-    smoothed_smile = 0.0
-
     while True:
 
         success, frame = cap.read()
@@ -89,66 +87,137 @@ with FaceLandmarker.create_from_options(options) as landmarker:
             timestamp_ms
         )
 
-        smile_score = 0.0
+
+        # Default values if MediaPipe cannot currently see a face
+        smile = 0.0
+
+        blink_left = 0.0
+        blink_right = 0.0
+
+        jaw_open = 0.0
+
+        brow_down_left = 0.0
+        brow_down_right = 0.0
+
+        brow_inner_up = 0.0
+ 
+        squint_left = 0.0
+        squint_right = 0.0
+
+        frown_left = 0.0
+        frown_right = 0.0
+
 
         if result.face_blendshapes:
 
             blendshapes = result.face_blendshapes[0]
 
-
-            # Turn the 52 blendshapes into:
-            #
-            # {
-            #     "mouthSmileLeft": 0.73,
-            #     "mouthSmileRight": 0.69,
-            #     "eyeBlinkLeft": 0.02,
-            #     ...
-            # }
+            # Convert the 52 MediaPipe blendshapes into a dictionary.
             scores = {
                 blendshape.category_name: blendshape.score
                 for blendshape in blendshapes
             }
 
+
+            # -------------------------
+            # MOUTH
+            # -------------------------
+
             smile_left = scores.get("mouthSmileLeft", 0.0)
             smile_right = scores.get("mouthSmileRight", 0.0)
 
-            smile_score = (smile_left + smile_right) / 2
-
-            alpha = 0.2
-
-            smoothed_smile = (
-                alpha * smile_score
-                + (1 - alpha) * smoothed_smile
-            )
+            smile = (smile_left + smile_right) / 2
 
 
-        #simple threshold for v0 
-        if state == "NEUTRAL":
-            if smoothed_smile > 0.18:
-                state = "SMILING"
+            frown_left = scores.get("mouthFrownLeft", 0.0)
+            frown_right = scores.get("mouthFrownRight", 0.0)
 
-        elif state == "SMILING":
-            if smoothed_smile < 0.08:
+
+            jaw_open = scores.get("jawOpen", 0.0)
+
+
+            # -------------------------
+            # EYES
+            # -------------------------
+
+            blink_left = scores.get("eyeBlinkLeft", 0.0)
+            blink_right = scores.get("eyeBlinkRight", 0.0)
+
+            squint_left = scores.get("eyeSquintLeft", 0.0)
+            squint_right = scores.get("eyeSquintRight", 0.0)
+
+
+            # -------------------------
+            # EYEBROWS
+            # -----------------------       
+
+            brow_down_left = scores.get("browDownLeft", 0.0)
+            brow_down_right = scores.get("browDownRight", 0.0)
+
+            brow_inner_up = scores.get("browInnerUp", 0.0)
+
+
+            #temp state detection
+            if smile > 0.18:
+                state = "HAPPY"
+            else:
                 state = "NEUTRAL"
-
+            
 
         #show info on camera window
+        # Everything we want displayed on screen.
+        debug_values = [
+            ("Smile", smile),
+
+            ("Blink L", blink_left),
+            ("Blink R", blink_right),
+
+            ("Jaw Open", jaw_open),
+
+            ("Brow Down L", brow_down_left), 
+            ("Brow Down R", brow_down_right),
+
+            ("Brow Inner Up", brow_inner_up),
+
+            ("Squint L", squint_left),
+            ("Squint R", squint_right),
+
+            ("Frown L", frown_left),
+            ("Frown R", frown_right),
+        ]
+
+
+        # Starting position
+        x = 20
+        y = 40
+
+        line_height = 32
+
+
+        for name, value in debug_values:
+
+            text = f"{name:<14} {value:.2f}"
+
+            cv2.putText(
+                frame,
+                text,
+                (x, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                (255, 255, 255),
+                2
+            )
+
+            y += line_height
+
+
+        # Display current state underneath everything.
         cv2.putText(
             frame,
-            f"Smile: {smile_score:.2f}",
-            (20,40),
+            f"STATE: {state}",
+            (x, y + 20),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
-            (255, 255, 255),
-            2
-        )
-
-        cv2.putText(
-            frame,
-            state,
-            (20, 90),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1.2,
             (255, 255, 255),
             3
         )
